@@ -39,15 +39,15 @@ def generate_responses(response):
 def handle_error(data, request_logging, auth_headers, start_time):
     # retry completion() request with fallback models
     response = None
-    data.pop("model") 
+    data.pop("model")
     rate_limited_models = set()
     model_expiration_times = {}
     fallback_strategy=['claude-instant-1', 'gpt-3.5-turbo', 'command-nightly']
+    execution_complete = False
     for model in fallback_strategy:
         response = None
-        attempt = 0 
+        attempt = 0
         new_data = deepcopy(data)
-        execution_complete = False
         for attempt in range(2):
             try:
                 if model in rate_limited_models: # check if model is currently cooling down
@@ -73,9 +73,9 @@ def handle_error(data, request_logging, auth_headers, start_time):
                 request_logging.on_request_failure(e, traceback_exception, data, auth_headers, start_time, end_time) # don't do this threaded - else sentry's capture exception will save the wrong input params (since we're doing model fallbacks)
                 error_type = type(e).__name__
                 print(f"error_type handle_error(): {error_type}")
-                llm_provider = e.llm_provider
                 if "AuthenticationError" in error_type and attempt < 1: # don't retry twice with a bad model key 
                     print(f"handle_error() - Input new_data: {new_data} \n Environment Variables: {os.environ}")
+                    llm_provider = e.llm_provider
                     # switch to the next key
                     new_data["api_key"] = backup_keys[llm_provider] # dynamically set the backup key - litellm checks this before checking os.environ - https://github.com/BerriAI/litellm/blob/cff26b1d08ba240dcecea7df78a7833990336e6b/litellm/main.py#L112
                 elif attempt > 0: # wait a random period before retrying
@@ -154,11 +154,9 @@ def make_collection():
 
 # HELPER: Extract user's question from messages
 def message_to_user_question(messages):
-    user_question = ""
-    for message in messages:
-        if message['role'] == 'user':
-            user_question += message["content"]
-    return user_question
+    return "".join(
+        message["content"] for message in messages if message['role'] == 'user'
+    )
 
 
 class Logging:
@@ -179,10 +177,10 @@ class Logging:
 
     def init_callbacks(self):
         for callback in self.callback_list:
-            if callback == "tinydb":
-                self.tinyDBClient = TinyDB()
             if callback == "sentry":
                 self.sentryClient = Sentry()
+            elif callback == "tinydb":
+                self.tinyDBClient = TinyDB()
 
 
     def on_request_start(self, data):
@@ -194,7 +192,6 @@ class Logging:
                     message=f"Input Data: {data} \n Environment Variables: {os.environ}",
                     level="info",
                 )
-            pass
         except:
             traceback.print_exc()
             self.print_verbose(f"Got Error on_request_start: {traceback.format_exc()}", level=1)
@@ -212,14 +209,15 @@ class Logging:
         except:
             traceback.print_exc()
             self.print_verbose(f"Got Error on_request_success: {traceback.format_exc()}", level=1)
-            pass
 
     def on_request_failure(self, exception, traceback_exception, data, request_key, start_time, end_time):
         # log event on failure - Non-blocking
         try:
             self.print_verbose(f"failure callbacks: {self.failure_callbacks}", level=2)
             for callback in self.failure_callbacks:
-                if callback == "tinydb":
+                if callback == "sentry":
+                    self.sentryClient.capture_exception(exception)
+                elif callback == "tinydb":
                     model = data["model"]
                     messages = data["messages"]
                     request_key = request_key
@@ -234,8 +232,5 @@ class Logging:
                         }
                     }
                     self.tinyDBClient.log_event(model=model, messages=messages, user=user, request_key=request_key, response_obj = result, start_time=start_time, end_time=end_time, print_verbose=self.print_verbose)
-                if callback == "sentry":
-                    self.sentryClient.capture_exception(exception)
         except:
             self.print_verbose(f"Got Error on_request_failure: {traceback.format_exc()}", level=1)
-            pass

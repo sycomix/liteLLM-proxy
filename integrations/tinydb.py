@@ -99,8 +99,7 @@ class TinyDB:
                 }
                 print_verbose(f"TinyDB Logging - final data object: {tinydb_data_obj}", level=2)
                 self.db.insert(tinydb_data_obj)
-            
+
         except:
             traceback.print_exc()
             print_verbose(f"TinyDB Logging Error - {traceback.format_exc()}", level=2)
-            pass

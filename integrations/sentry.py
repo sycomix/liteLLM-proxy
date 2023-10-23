@@ -16,7 +16,7 @@ class Sentry:
             subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'sentry_sdk'])
             import sentry_sdk
         sentry_sdk_instance = sentry_sdk
-        self.sentry_trace_rate = os.environ.get("SENTRY_API_TRACE_RATE") if "SENTRY_API_TRACE_RATE" in os.environ else "1.0"
+        self.sentry_trace_rate = os.environ.get("SENTRY_API_TRACE_RATE", "1.0")
         sentry_sdk_instance.init(dsn=os.environ.get("SENTRY_API_URL"), traces_sample_rate=float(self.sentry_trace_rate))
         self.capture_exception = sentry_sdk_instance.capture_exception
         self.add_breadcrumb = sentry_sdk_instance.add_breadcrumb 
